@@ -196,7 +196,7 @@ def tt_get(path: str) -> dict:
     token = get_tt_token()
     resp = SESSION.get(
         f"{TT_BASE}{path}",
-        headers={"Authorization": token},
+        headers={"Authorization": f"Bearer {token}"},
         timeout=30,
     )
     if resp.status_code == 404:
@@ -205,95 +205,76 @@ def tt_get(path: str) -> dict:
     return resp.json()
 
 
-# ── Option chain fetch & liquidity filter ─────────────────────────────────────
-def check_liquidity(symbol: str) -> tuple[bool, str]:
+# ── Option chain fetch via Tastytrade ────────────────────────────────────────
+# Liquidity gate: market-metrics liquidity-rating (1-5, Tastytrade's own measure)
+# Chain structure: /option-chains/{symbol}/nested  (OCC symbols, strikes, exps)
+# Per-expiration IV: market-metrics option-expiration-implied-volatilities
+# bid/ask/greeks: NULL — DXFeed streaming required (blocked by corp proxy)
+
+MIN_LIQUIDITY_RATING = 3   # Tastytrade rating 1-5; 3+ = acceptably liquid
+
+
+def fetch_chain_if_liquid(symbol: str, today: datetime.date) -> tuple[pd.DataFrame, str]:
     """
-    Fetch the front-month ATM call for symbol.
-    Returns (is_liquid, reason_string).
-    Liquid = front-month ATM bid-ask spread <= MAX_SPREAD ($2.00).
+    1. Check Tastytrade liquidity-rating via market-metrics (gate: >= 3)
+    2. If liquid, fetch chain structure + per-expiration IV for 0-60 DTE
+    Returns (DataFrame, reason_string). Empty DataFrame = illiquid/no data.
     """
-    data = tt_get(f"/option-chains/{symbol}/nested")
-    if not data:
-        return False, "no option chain"
+    # ── Liquidity gate ────────────────────────────────────────────────────────
+    metrics_data = tt_get(f"/market-metrics?symbols={symbol}")
+    if not metrics_data:
+        return pd.DataFrame(), "no market-metrics"
 
-    expirations = data.get("data", {}).get("items", [])
-    if not expirations:
-        return False, "empty chain"
+    items = metrics_data.get("data", {}).get("items", [])
+    if not items:
+        return pd.DataFrame(), "no metrics items"
 
-    today = datetime.date.today()
-    # Find the nearest expiration >= today
-    front = None
-    for exp in expirations:
-        exp_date = datetime.date.fromisoformat(exp["expiration-date"])
-        if exp_date >= today:
-            front = exp
-            break
+    m = items[0]
+    liq_rating = int(m.get("liquidity-rating", 0) or 0)
+    if liq_rating < MIN_LIQUIDITY_RATING:
+        return pd.DataFrame(), f"liquidity-rating {liq_rating} < {MIN_LIQUIDITY_RATING}"
 
-    if front is None:
-        return False, "no future expirations"
+    iv_rank = float(m.get("implied-volatility-index-rank", 0) or 0)
+    iv_index = float(m.get("implied-volatility-index", 0) or 0)
 
-    # Get strikes for front month
-    strikes = front.get("strikes", [])
-    if not strikes:
-        return False, "no strikes"
+    # Build expiration → IV map from market-metrics
+    exp_iv_map = {}
+    for ei in m.get("option-expiration-implied-volatilities", []):
+        exp_iv_map[ei.get("expiration-date", "")] = float(ei.get("implied-volatility", 0) or 0)
 
-    # Find ATM strike: the one where call has the smallest abs(strike - mid_strike)
-    # We use the middle of the strikes list as proxy for ATM
-    mid_idx = len(strikes) // 2
-    atm = strikes[mid_idx]
+    liquid_reason = f"liq-rating={liq_rating} iv-rank={iv_rank:.2f}"
 
-    call = atm.get("call", {})
-    bid  = float(call.get("bid",  0) or 0)
-    ask  = float(call.get("ask",  0) or 0)
+    # ── Fetch chain structure ─────────────────────────────────────────────────
+    chain_data = tt_get(f"/option-chains/{symbol}/nested")
+    if not chain_data:
+        return pd.DataFrame(), "no option chain"
 
-    if bid == 0 and ask == 0:
-        return False, "zero bid/ask (no market)"
+    chain_items = chain_data.get("data", {}).get("items", [])
+    if not chain_items:
+        return pd.DataFrame(), "empty chain"
 
-    spread = round(ask - bid, 4)
-    if spread > MAX_SPREAD:
-        return False, f"spread ${spread:.2f} > ${MAX_SPREAD:.2f}"
-
-    return True, f"spread ${spread:.2f} OK"
-
-
-def fetch_chain(symbol: str, today: datetime.date) -> pd.DataFrame:
-    """
-    Fetch all expirations 0-60 DTE for symbol.
-    Returns a DataFrame with one row per option contract.
-    """
-    data = tt_get(f"/option-chains/{symbol}/nested")
-    if not data:
-        return pd.DataFrame()
-
-    expirations = data.get("data", {}).get("items", [])
-    cutoff = today + datetime.timedelta(days=MAX_DTE)
+    cutoff      = today + datetime.timedelta(days=MAX_DTE)
     snapshot_ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    rows        = []
 
-    rows = []
-    for exp in expirations:
-        exp_date_str = exp["expiration-date"]
-        exp_date     = datetime.date.fromisoformat(exp_date_str)
+    for exp in chain_items[0].get("expirations", []):
+        exp_date_str = exp.get("expiration-date", "")
+        if not exp_date_str:
+            continue
+        exp_date = datetime.date.fromisoformat(exp_date_str)
         if exp_date < today or exp_date > cutoff:
             continue
 
-        dte = (exp_date - today).days
+        dte    = (exp_date - today).days
+        exp_iv = exp_iv_map.get(exp_date_str, iv_index)  # fallback to overall IV
 
         for strike_entry in exp.get("strikes", []):
-            strike = float(strike_entry.get("strike-price", 0))
+            strike = float(strike_entry.get("strike-price", 0) or 0)
 
-            for opt_type, side in [("C", "call"), ("P", "put")]:
-                opt = strike_entry.get(side, {})
-                if not opt:
+            for opt_type, occ_key in [("C", "call"), ("P", "put")]:
+                occ_symbol = strike_entry.get(occ_key, "")
+                if not occ_symbol:
                     continue
-
-                bid = float(opt.get("bid",  0) or 0)
-                ask = float(opt.get("ask",  0) or 0)
-                if bid == 0 and ask == 0:
-                    continue  # skip strikes with no market
-
-                spread = round(ask - bid, 4)
-                if spread > MAX_SPREAD:
-                    continue  # skip illiquid strikes within an otherwise-liquid chain
 
                 rows.append({
                     "symbol":          symbol,
@@ -302,22 +283,25 @@ def fetch_chain(symbol: str, today: datetime.date) -> pd.DataFrame:
                     "dte":             dte,
                     "strike":          strike,
                     "option_type":     opt_type,
-                    "bid":             bid,
-                    "ask":             ask,
-                    "mid":             round((bid + ask) / 2, 4),
-                    "spread":          spread,
-                    "iv":              float(opt.get("implied-volatility", 0) or 0),
-                    "delta":           float(opt.get("delta",  0) or 0),
-                    "gamma":           float(opt.get("gamma",  0) or 0),
-                    "theta":           float(opt.get("theta",  0) or 0),
-                    "vega":            float(opt.get("vega",   0) or 0),
-                    "open_interest":   int(opt.get("open-interest", 0) or 0),
-                    "volume":          int(opt.get("volume",   0) or 0),
+                    "occ_symbol":      occ_symbol,
+                    "bid":             None,   # DXFeed streaming needed
+                    "ask":             None,
+                    "mid":             None,
+                    "spread":          None,
+                    "iv":              round(exp_iv, 6),
+                    "iv_rank":         round(iv_rank, 6),
+                    "liquidity_rating": liq_rating,
+                    "delta":           None,
+                    "gamma":           None,
+                    "theta":           None,
+                    "vega":            None,
+                    "open_interest":   None,
+                    "volume":          None,
                     "snapshot_ts":     snapshot_ts,
                     "source":          "tastytrade",
                 })
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows), liquid_reason
 
 
 # ── Databricks SQL helpers (same pattern as local_price_loader.py) ────────────
@@ -372,25 +356,28 @@ def ensure_table():
     """Create the bronze option chain table if it doesn't exist."""
     run_sql(f"""
 CREATE TABLE IF NOT EXISTS {TARGET_TABLE} (
-    symbol          STRING    NOT NULL,
-    snapshot_date   DATE      NOT NULL,
-    expiration_date DATE      NOT NULL,
-    dte             INT,
-    strike          DOUBLE,
-    option_type     STRING,
-    bid             DOUBLE,
-    ask             DOUBLE,
-    mid             DOUBLE,
-    spread          DOUBLE,
-    iv              DOUBLE,
-    delta           DOUBLE,
-    gamma           DOUBLE,
-    theta           DOUBLE,
-    vega            DOUBLE,
-    open_interest   BIGINT,
-    volume          BIGINT,
-    snapshot_ts     TIMESTAMP,
-    source          STRING
+    symbol           STRING    NOT NULL,
+    snapshot_date    DATE      NOT NULL,
+    expiration_date  DATE      NOT NULL,
+    dte              INT,
+    strike           DOUBLE,
+    option_type      STRING,
+    occ_symbol       STRING,
+    bid              DOUBLE,
+    ask              DOUBLE,
+    mid              DOUBLE,
+    spread           DOUBLE,
+    iv               DOUBLE,
+    iv_rank          DOUBLE,
+    liquidity_rating INT,
+    delta            DOUBLE,
+    gamma            DOUBLE,
+    theta            DOUBLE,
+    vega             DOUBLE,
+    open_interest    BIGINT,
+    volume           BIGINT,
+    snapshot_ts      TIMESTAMP,
+    source           STRING
 )
 USING DELTA
 PARTITIONED BY (snapshot_date)
@@ -476,42 +463,27 @@ def main():
     for i, symbol in enumerate(TICKERS, 1):
         prefix = f"  [{i:>3}/{len(TICKERS)}] {symbol:<10}"
 
-        # Step 1: Liquidity check (front-month ATM spread)
+        # Single API call: liquidity check + chain fetch combined
         try:
-            liquid, reason = check_liquidity(symbol)
+            df, reason = fetch_chain_if_liquid(symbol, today)
         except Exception as e:
-            print(f"{prefix} ERROR (liquidity check): {e}")
-            skipped.append((symbol, str(e)))
-            time.sleep(RATE_LIMIT_S)
-            continue
-
-        if not liquid:
-            print(f"{prefix} SKIP — {reason}")
-            skipped.append((symbol, reason))
-            time.sleep(RATE_LIMIT_S)
-            continue
-
-        # Step 2: Fetch full 0-60 DTE chain
-        try:
-            df = fetch_chain(symbol, today)
-        except Exception as e:
-            print(f"{prefix} ERROR (fetch chain): {e}")
+            print(f"{prefix} ERROR: {e}")
             skipped.append((symbol, str(e)))
             time.sleep(RATE_LIMIT_S)
             continue
 
         if df.empty:
-            print(f"{prefix} SKIP — no rows in 0-{MAX_DTE} DTE range")
-            skipped.append((symbol, "no rows"))
+            print(f"{prefix} SKIP — {reason}")
+            skipped.append((symbol, reason))
             time.sleep(RATE_LIMIT_S)
             continue
 
-        # Step 3: Upload to Databricks
+        # Upload liquid options to Databricks
         try:
             n = upsert_chain(df)
             total_rows += n
             loaded.append(symbol)
-            print(f"{prefix} {reason:<20} → {n:,} rows uploaded")
+            print(f"{prefix} {reason:<25} → {n:,} rows uploaded")
         except Exception as e:
             print(f"{prefix} ERROR (upload): {e}")
             skipped.append((symbol, f"upload error: {e}"))
