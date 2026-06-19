@@ -39,6 +39,9 @@ SOURCE_NAME  = "tastytrade"
 _BASE_URL      = "https://api.tastytrade.com"
 _SANDBOX_URL   = "https://api.cert.tastytrade.com"   # for testing
 
+# OAuth token endpoint
+_TOKEN_URL     = "https://api.tastytrade.com/oauth/token"
+
 # Fetch config
 MAX_DTE       = 90    # only fetch expirations within 90 days
 MIN_DTE       = 5     # skip very near-term (< 5 DTE)
@@ -72,51 +75,61 @@ _SCHEMA = StructType([
 # ── authentication ─────────────────────────────────────────────────────────────
 
 class TastytradeSession:
-    """Manages a Tastytrade API session token.
+    """Manages a Tastytrade API session using OAuth 2.0 refresh token flow.
 
-    Authenticates once and reuses the token for all requests.
-    Credentials are pulled from Databricks Secrets — never hardcoded.
+    Authentication uses a refresh token + client secret to obtain a short-lived
+    access token. Both are stored in Databricks Secrets — never hardcoded.
+
+    Databricks Secrets keys required (scope: fazdane):
+        tastytrade_client_secret  — TT_SECRET (API client secret)
+        tastytrade_refresh_token  — TT_REFRESH (OAuth refresh token)
+
+    To store in Databricks:
+        databricks secrets put-secret --scope fazdane --key tastytrade_client_secret
+        databricks secrets put-secret --scope fazdane --key tastytrade_refresh_token
     """
 
     def __init__(self, use_sandbox: bool = False) -> None:
         self._base = _SANDBOX_URL if use_sandbox else _BASE_URL
-        self._token: Optional[str] = None
+        self._access_token: Optional[str] = None
         self._headers: dict[str, str] = {}
 
     def login(self) -> None:
-        """Authenticate and store the session token.
+        """Exchange the refresh token for a fresh access token via OAuth 2.0.
 
-        Credentials sourced from Databricks Secrets scope 'fazdane':
-            - tastytrade_username
-            - tastytrade_password
+        Reads credentials from Databricks Secrets scope 'fazdane':
+            - tastytrade_client_secret  (TT_SECRET)
+            - tastytrade_refresh_token  (TT_REFRESH)
         """
-        username = get_secret("tastytrade_username")
-        password = get_secret("tastytrade_password")
+        client_secret  = get_secret("tastytrade_client_secret")
+        refresh_token  = get_secret("tastytrade_refresh_token")
 
         resp = requests.post(
-            f"{self._base}/sessions",
-            json={"login": username, "password": password},
+            _TOKEN_URL,
+            json={
+                "grant_type":    "refresh_token",
+                "refresh_token": refresh_token,
+                "client_secret": client_secret,
+            },
             timeout=30,
         )
         resp.raise_for_status()
         data = resp.json()
 
-        self._token = data["data"]["session-token"]
+        self._access_token = data.get("access_token") or data.get("data", {}).get("access-token")
+        if not self._access_token:
+            raise RuntimeError("Tastytrade OAuth: no access_token in response.")
+
         self._headers = {
-            "Authorization": self._token,
+            "Authorization": f"Bearer {self._access_token}",
             "Content-Type":  "application/json",
         }
-        logger.info("Tastytrade session authenticated successfully.")
+        logger.info("Tastytrade OAuth: access token obtained successfully.")
 
     def logout(self) -> None:
-        """Invalidate the session token."""
-        if self._token:
-            try:
-                requests.delete(f"{self._base}/sessions", headers=self._headers, timeout=10)
-            except Exception:
-                pass
-            self._token = None
-            self._headers = {}
+        """Clear the in-memory access token."""
+        self._access_token = None
+        self._headers = {}
 
     def get(self, path: str, params: dict | None = None) -> dict:
         """Make an authenticated GET request.
@@ -128,7 +141,7 @@ class TastytradeSession:
         Returns:
             Parsed JSON response dict.
         """
-        if not self._token:
+        if not self._access_token:
             raise RuntimeError("Not authenticated. Call login() first.")
 
         for attempt in range(1, RETRY_LIMIT + 1):
@@ -142,13 +155,17 @@ class TastytradeSession:
                 resp.raise_for_status()
                 return resp.json()
             except requests.HTTPError as e:
-                if resp.status_code == 429:
+                if resp.status_code == 401:
+                    # Token may have expired mid-run — re-authenticate once
+                    logger.warning("Access token expired mid-run — re-authenticating.")
+                    self.login()
+                elif resp.status_code == 429:
                     logger.warning(f"Rate limited — waiting {RETRY_DELAY * attempt}s")
                     time.sleep(RETRY_DELAY * attempt)
                 elif attempt == RETRY_LIMIT:
                     raise
                 else:
-                    logger.warning(f"HTTP {resp.status_code} on attempt {attempt}: {e}")
+                    logger.warning(f"HTTP {resp.status_code} attempt {attempt}: {e}")
                     time.sleep(RETRY_DELAY)
             except Exception as e:
                 if attempt == RETRY_LIMIT:

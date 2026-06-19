@@ -21,10 +21,10 @@ import os
 _SCOPE = "fazdane"
 
 _ENV_FALLBACKS: dict[str, str] = {
-    "tastytrade_username":     "FAZDANE_TASTYTRADE_USERNAME",
-    "tastytrade_password":     "FAZDANE_TASTYTRADE_PASSWORD",
-    "databricks_token":        "FAZDANE_DATABRICKS_TOKEN",
-    "sql_warehouse_http_path": "FAZDANE_SQL_WAREHOUSE_HTTP_PATH",
+    "tastytrade_client_secret":  "FAZDANE_TT_CLIENT_SECRET",
+    "tastytrade_refresh_token":  "FAZDANE_TT_REFRESH_TOKEN",
+    "databricks_token":          "FAZDANE_DATABRICKS_TOKEN",
+    "sql_warehouse_http_path":   "FAZDANE_SQL_WAREHOUSE_HTTP_PATH",
 }
 
 

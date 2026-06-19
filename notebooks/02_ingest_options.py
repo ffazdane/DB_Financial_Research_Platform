@@ -10,10 +10,10 @@
 # MAGIC **Primary key:** `(ticker, trade_date, expiration_date, option_type, strike)`
 # MAGIC
 # MAGIC **Security:** Tastytrade credentials read from Databricks Secrets scope `fazdane`.
-# MAGIC Run once to store credentials:
+# MAGIC Run once to store credentials (OAuth 2.0 — client secret + refresh token):
 # MAGIC ```
-# MAGIC databricks secrets put-secret --scope fazdane --key tastytrade_username
-# MAGIC databricks secrets put-secret --scope fazdane --key tastytrade_password
+# MAGIC databricks secrets put-secret --scope fazdane --key tastytrade_client_secret
+# MAGIC databricks secrets put-secret --scope fazdane --key tastytrade_refresh_token
 # MAGIC ```
 
 # COMMAND ----------
