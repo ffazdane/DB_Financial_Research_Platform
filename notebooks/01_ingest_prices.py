@@ -28,7 +28,7 @@
 
 # COMMAND ----------
 
-import sys, os
+import sys
 sys.path.insert(0, "/Workspace/Repos/ffazdane@gmail.com/DB_Financial_Research_Platform")
 
 from src.ingestion.universe_loader import classify_tickers
@@ -37,23 +37,6 @@ new_tickers, existing_tickers = classify_tickers()
 
 print(f"New tickers (full 5yr load):   {new_tickers}")
 print(f"Existing tickers (incremental): {existing_tickers}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Step 1b — Diagnostic: Ticker.history() columns
-
-# COMMAND ----------
-
-import yfinance as yf, pandas as pd
-t = yf.Ticker("SPY")
-raw = t.history(start="2025-01-01", end="2025-01-10", interval="1d", auto_adjust=False, actions=False)
-print(f"yfinance={yf.__version__}, shape={raw.shape}, empty={raw.empty}")
-if not raw.empty:
-    df2 = raw.reset_index()
-    print(f"columns={list(df2.columns)}")
-    print(df2.head(2).to_string())
-dbutils.notebook.exit(f"history cols={list(raw.reset_index().columns) if not raw.empty else 'EMPTY'}")
 
 # COMMAND ----------
 
