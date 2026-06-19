@@ -62,6 +62,8 @@ def _get_max_dates() -> dict[str, date]:
 def _fetch_yahoo(ticker: str, start: date, end: date) -> pd.DataFrame:
     """Fetch daily OHLCV from Yahoo Finance for one ticker.
 
+    Uses Ticker.history() which is reliable across yfinance v0.2.x and v1.x.
+
     Args:
         ticker: Ticker symbol.
         start:  Start date (inclusive).
@@ -73,28 +75,27 @@ def _fetch_yahoo(ticker: str, start: date, end: date) -> pd.DataFrame:
     """
     for attempt in range(1, RETRY_LIMIT + 1):
         try:
-            raw = yf.download(
-                tickers=ticker,
+            t = yf.Ticker(ticker)
+            raw = t.history(
                 start=format_date(start),
-                end=format_date(end + timedelta(days=1)),  # yfinance end is exclusive
+                end=format_date(end + timedelta(days=1)),  # history end is exclusive
                 interval="1d",
                 auto_adjust=False,
-                progress=False,
-                threads=False,
+                actions=False,
             )
+
             if raw.empty:
                 logger.warning(f"{ticker}: no data returned from Yahoo Finance ({start} → {end})")
                 return pd.DataFrame()
 
-            # Flatten multi-level columns if present (yfinance 0.2.x returns MultiIndex)
-            if isinstance(raw.columns, pd.MultiIndex):
-                # Level 0 is price type ("Open","High",etc.), level 1 is ticker or empty
-                raw.columns = raw.columns.get_level_values(0)
-
+            # Ticker.history() returns a DatetimeIndex — reset to get a date column
             df = raw.reset_index()
 
-            # yfinance <0.2 uses "Date"; >=0.2 uses "Datetime" for the index column
-            date_col = "Datetime" if "Datetime" in df.columns else "Date"
+            # Normalize the date column name (may be "Date" or "Datetime")
+            date_col = next((c for c in df.columns if str(c).lower() in ("date", "datetime")), None)
+            if date_col is None:
+                logger.error(f"{ticker}: no date column found. Columns: {list(df.columns)}")
+                return pd.DataFrame()
 
             df = df.rename(columns={
                 date_col:    "trade_date",
@@ -105,18 +106,22 @@ def _fetch_yahoo(ticker: str, start: date, end: date) -> pd.DataFrame:
                 "Adj Close": "adj_close",
                 "Volume":    "volume",
             })
-            # Strip timezone if present (yfinance may return tz-aware datetimes)
-            df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.tz_localize(None).dt.date
 
-            if "trade_date" not in df.columns:
-                logger.error(f"{ticker}: could not find date column in yfinance response. Columns: {list(df.columns)}")
-                return pd.DataFrame()
+            # Strip timezone info if present
+            df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.tz_localize(None).dt.date
 
             df["ticker"]       = ticker
             df["source"]       = SOURCE_NAME
             df["ingestion_ts"] = datetime.utcnow()
 
-            return df[["ticker","trade_date","open","high","low","close","adj_close","volume","source","ingestion_ts"]]
+            # Ensure required columns exist
+            required = ["ticker", "trade_date", "open", "high", "low", "close", "adj_close", "volume", "source", "ingestion_ts"]
+            missing = [c for c in required if c not in df.columns]
+            if missing:
+                logger.error(f"{ticker}: missing columns after rename: {missing}. Available: {list(df.columns)}")
+                return pd.DataFrame()
+
+            return df[required]
 
         except Exception as e:
             logger.warning(f"{ticker}: Yahoo Finance attempt {attempt}/{RETRY_LIMIT} failed — {e}")
