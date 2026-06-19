@@ -31,20 +31,12 @@
 import sys, os
 sys.path.insert(0, "/Workspace/Repos/ffazdane@gmail.com/DB_Financial_Research_Platform")
 
-# Diagnostic: verify path and yaml exist
-repo_root = "/Workspace/Repos/ffazdane@gmail.com/DB_Financial_Research_Platform"
-yaml_path = f"{repo_root}/config/tickers.yaml"
-print(f"repo_root exists: {os.path.exists(repo_root)}")
-print(f"tickers.yaml exists: {os.path.exists(yaml_path)}")
-print(f"sys.path[0]: {sys.path[0]}")
-
 from src.ingestion.universe_loader import classify_tickers
 
 new_tickers, existing_tickers = classify_tickers()
 
 print(f"New tickers (full 5yr load):   {new_tickers}")
 print(f"Existing tickers (incremental): {existing_tickers}")
-dbutils.notebook.exit(f"classify_tickers done: {len(new_tickers)} new, {len(existing_tickers)} existing. new={new_tickers[:3]}")
 
 # COMMAND ----------
 
