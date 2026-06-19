@@ -23,10 +23,6 @@
 
 # COMMAND ----------
 
-%restart_python
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Step 1 — Classify tickers: new vs existing
 

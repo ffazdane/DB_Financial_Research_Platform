@@ -27,10 +27,6 @@
 
 # COMMAND ----------
 
-%restart_python
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Step 1 — Load liquid ticker universe
 
