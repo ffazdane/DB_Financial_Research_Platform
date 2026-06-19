@@ -20,7 +20,10 @@
 # COMMAND ----------
 
 %pip install yfinance pyyaml pytz --quiet
-dbutils.library.restartPython()
+
+# COMMAND ----------
+
+%restart_python
 
 # COMMAND ----------
 
