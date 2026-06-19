@@ -41,6 +41,26 @@ print(f"Existing tickers (incremental): {existing_tickers}")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Step 1b — Diagnostic: verify yfinance download structure
+
+# COMMAND ----------
+
+import yfinance as yf, pandas as pd
+test = yf.download("SPY", start="2025-01-01", end="2025-01-10", interval="1d", auto_adjust=False, progress=False)
+print(f"yfinance version: {yf.__version__}")
+print(f"Shape: {test.shape}")
+print(f"Empty: {test.empty}")
+print(f"Columns type: {type(test.columns)}")
+print(f"Columns: {list(test.columns)}")
+if not test.empty:
+    df2 = test.reset_index()
+    print(f"After reset_index columns: {list(df2.columns)}")
+    print(df2.head(2))
+dbutils.notebook.exit(f"yfinance={yf.__version__}, shape={test.shape}, cols={list(test.columns)}")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Step 2 — Full 5-year backfill for new tickers
 
 # COMMAND ----------
