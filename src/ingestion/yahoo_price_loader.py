@@ -86,12 +86,18 @@ def _fetch_yahoo(ticker: str, start: date, end: date) -> pd.DataFrame:
                 logger.warning(f"{ticker}: no data returned from Yahoo Finance ({start} → {end})")
                 return pd.DataFrame()
 
-            # Flatten multi-level columns if present
+            # Flatten multi-level columns if present (yfinance 0.2.x returns MultiIndex)
             if isinstance(raw.columns, pd.MultiIndex):
+                # Level 0 is price type ("Open","High",etc.), level 1 is ticker or empty
                 raw.columns = raw.columns.get_level_values(0)
 
-            df = raw.reset_index().rename(columns={
-                "Date":      "trade_date",
+            df = raw.reset_index()
+
+            # yfinance <0.2 uses "Date"; >=0.2 uses "Datetime" for the index column
+            date_col = "Datetime" if "Datetime" in df.columns else "Date"
+
+            df = df.rename(columns={
+                date_col:    "trade_date",
                 "Open":      "open",
                 "High":      "high",
                 "Low":       "low",
@@ -99,7 +105,13 @@ def _fetch_yahoo(ticker: str, start: date, end: date) -> pd.DataFrame:
                 "Adj Close": "adj_close",
                 "Volume":    "volume",
             })
-            df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+            # Strip timezone if present (yfinance may return tz-aware datetimes)
+            df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.tz_localize(None).dt.date
+
+            if "trade_date" not in df.columns:
+                logger.error(f"{ticker}: could not find date column in yfinance response. Columns: {list(df.columns)}")
+                return pd.DataFrame()
+
             df["ticker"]       = ticker
             df["source"]       = SOURCE_NAME
             df["ingestion_ts"] = datetime.utcnow()
