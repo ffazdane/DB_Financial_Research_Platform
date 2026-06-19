@@ -23,8 +23,8 @@
 
 # COMMAND ----------
 
-# %pip install requests pyyaml pytz
-# dbutils.library.restartPython()
+%pip install requests pyyaml pytz --quiet
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
