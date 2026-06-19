@@ -10,8 +10,8 @@ databricks:
     gold:   gold
     ml:     ml
   # SQL Warehouse connection — set via Databricks Secrets at runtime
-  sql_warehouse_http_path: ""    # e.g. /sql/1.0/warehouses/<warehouse-id>
-  workspace_url:            ""   # e.g. https://adb-xxxx.azuredatabricks.net
+  sql_warehouse_http_path: ""    # set this after creating SQL Warehouse: /sql/1.0/warehouses/<id>
+  workspace_url:            "https://dbc-225b7a82-e569.cloud.databricks.com"
 
 secrets:
   scope: fazdane
