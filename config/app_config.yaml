@@ -1,0 +1,54 @@
+# FazDane Finance Platform — Application Configuration
+# SECURITY: Do NOT add tokens, passwords, or API keys here.
+#           All credentials are stored in Databricks Secrets (scope: fazdane).
+
+databricks:
+  catalog: fazdane_finance
+  schemas:
+    bronze: bronze
+    silver: silver
+    gold:   gold
+    ml:     ml
+  # SQL Warehouse connection — set via Databricks Secrets at runtime
+  sql_warehouse_http_path: ""    # e.g. /sql/1.0/warehouses/<warehouse-id>
+  workspace_url:            ""   # e.g. https://adb-xxxx.azuredatabricks.net
+
+secrets:
+  scope: fazdane
+  keys:
+    tastytrade_username:  tastytrade_username
+    tastytrade_password:  tastytrade_password
+    databricks_token:     databricks_token
+    sql_warehouse_path:   sql_warehouse_http_path
+
+app:
+  title:        "FazDane Finance Research Platform"
+  page_icon:    "📈"
+  mobile_first: true
+  theme:        "dark"
+  default_page: "Today's Candidates"
+  layout:       "wide"
+
+ingestion:
+  yahoo_finance:
+    history_years:         5
+    frequency:             "1d"
+    retry_attempts:        3
+    retry_delay_seconds:   5
+    batch_size:            10      # tickers per API batch
+
+  tastytrade:
+    options_fetch_time_et: "15:00"  # 3:00 PM ET — 30 min before close
+    max_dte:               90
+    min_dte:               5
+    retry_attempts:        3
+
+display:
+  max_candidates_shown:       50
+  confidence_threshold:       0.60
+  default_risk_levels:        ["low", "medium"]
+  default_strategy_filter:    []    # empty = all strategies shown
+
+quality:
+  max_allowed_null_pct:       0.05  # flag if >5% nulls in any column
+  min_rows_per_ticker_5yr:    900   # ~252 trading days × 5 years - buffer

@@ -1,0 +1,69 @@
+# FazDane Finance Platform — ML Model Configuration
+# Used by src/ml/ modules and MLflow experiment tracking
+
+mlflow:
+  experiment_name:    "/fazdane/strategy_ranking"
+  model_registry_name: "fazdane_strategy_ranker"
+  tracking_uri:       "databricks"   # Databricks managed MLflow
+
+xgboost_ranker:
+  objective:              "rank:pairwise"
+  n_estimators:           500
+  max_depth:              6
+  learning_rate:          0.05
+  subsample:              0.8
+  colsample_bytree:       0.8
+  min_child_weight:       5
+  gamma:                  0.1
+  reg_alpha:              0.1
+  reg_lambda:             1.0
+  eval_metric:            "ndcg"
+  early_stopping_rounds:  50
+  features:
+    - fdts_score
+    - ticker_strength_score
+    - trend_score
+    - momentum_score
+    - volume_score
+    - iv_rank
+    - iv_percentile
+    - option_liquidity_score
+    - market_regime_score
+  target_vars:
+    - return_forward_5d
+    - return_forward_10d
+    - return_forward_20d
+
+hmm_regime:
+  n_components:     4           # bullish, bearish, sideways, high-volatility
+  covariance_type:  "full"
+  n_iter:           1000
+  random_state:     42
+  features:
+    - spy_return_5d
+    - qqq_return_5d
+    - iwm_return_5d
+    - vix_level
+    - spy_return_20d
+  regime_labels:
+    0: "bullish"
+    1: "bearish"
+    2: "sideways"
+    3: "high_volatility"
+
+survival_model:
+  model_type:     "cox_ph"       # Cox Proportional Hazards
+  duration_col:   "trend_duration_days"
+  event_col:      "trend_ended"
+  penalizer:      0.1
+  covariates:
+    - fdts_score
+    - ticker_strength_score
+    - market_regime_score
+    - iv_rank
+
+prediction:
+  forward_return_windows:  [5, 10, 20]   # trading days
+  min_confidence:          0.55
+  batch_size:              1000
+  min_training_rows:       500           # minimum rows to train a model

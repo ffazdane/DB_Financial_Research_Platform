@@ -1,0 +1,56 @@
+# FazDane Finance Platform — Ticker Universe
+# Phase 1 MVP: 15 highly liquid tickers
+# Expand to 50-100 tickers in Phase 9
+
+mvp_tickers:
+  # Index ETFs — used for market regime + relative strength calculations
+  indices:
+    - SPY   # S&P 500
+    - QQQ   # Nasdaq 100
+    - IWM   # Russell 2000
+
+  # Large-cap equities — high liquidity, active options markets
+  equities:
+    - NVDA  # NVIDIA
+    - AAPL  # Apple
+    - MSFT  # Microsoft
+    - AMZN  # Amazon
+    - META  # Meta Platforms
+    - GOOGL # Alphabet
+    - TSLA  # Tesla
+    - AVGO  # Broadcom
+    - AMD   # Advanced Micro Devices
+    - LLY   # Eli Lilly
+    - JPM   # JPMorgan Chase
+    - XOM   # ExxonMobil
+
+# Flat list used by universe_loader.py
+all_tickers:
+  - SPY
+  - QQQ
+  - IWM
+  - NVDA
+  - AAPL
+  - MSFT
+  - AMZN
+  - META
+  - GOOGL
+  - TSLA
+  - AVGO
+  - AMD
+  - LLY
+  - JPM
+  - XOM
+
+# Liquidity filter thresholds (applied in silver layer)
+liquidity_filters:
+  min_price: 20.0
+  min_avg_volume_20d: 1_000_000
+  min_avg_dollar_volume_20d: 50_000_000
+  max_option_bid_ask_spread_pct: 0.10
+  require_options: true
+
+# History settings for Yahoo Finance ingestion
+history:
+  years: 5
+  frequency: "1d"   # daily OHLCV

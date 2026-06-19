@@ -1,0 +1,77 @@
+# ==============================================================================
+# FazDane Finance Platform — .gitignore
+# NEVER commit credentials, data files, or model artifacts.
+# ==============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+.env
+
+# --- Secrets & credentials — NEVER commit ---
+*.key
+*.pem
+*.p12
+.env.*
+secrets.json
+.databricks-connect
+databricks.cfg
+
+# --- Data files — all data lives in Delta Lake ---
+*.csv
+*.tsv
+*.parquet
+*.json.gz
+*.zip
+data/
+raw_data/
+downloads/
+
+# --- Model artifacts — all models live in MLflow Registry ---
+*.pkl
+*.joblib
+*.onnx
+*.pt
+*.h5
+models/
+model_artifacts/
+
+# --- Notebook output / checkpoints ---
+.ipynb_checkpoints/
+*.ipynb.bak
+
+# --- Databricks local files ---
+.databricks/
+*.dbc
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Test artifacts ---
+.pytest_cache/
+.coverage
+htmlcov/

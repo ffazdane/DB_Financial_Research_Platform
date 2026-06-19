@@ -1,0 +1,40 @@
+# ==============================================================================
+# FazDane Finance Platform — Python Dependencies
+# Install via: pip install -r requirements.txt
+# Databricks runtime: use %pip install within notebooks where needed.
+# ==============================================================================
+
+# --- Data ingestion ---
+yfinance>=0.2.38
+tastytrade>=8.6.0
+pyyaml>=6.0.1
+requests>=2.31.0
+
+# --- Data processing ---
+pandas>=2.1.0
+numpy>=1.26.0
+scipy>=1.11.0
+
+# --- Technical indicators ---
+pandas-ta>=0.3.14b
+
+# --- ML & statistics ---
+xgboost>=2.0.3
+scikit-learn>=1.4.0
+hmmlearn>=0.3.2
+lifelines>=0.27.8
+
+# --- MLflow ---
+mlflow>=2.12.0
+
+# --- Databricks connectivity ---
+databricks-sdk>=0.24.0
+databricks-sql-connector>=3.1.0
+
+# --- Streamlit app ---
+streamlit>=1.32.0
+plotly>=5.20.0
+
+# --- Utilities ---
+python-dateutil>=2.9.0
+pytz>=2024.1

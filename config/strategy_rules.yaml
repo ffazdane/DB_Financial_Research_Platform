@@ -1,0 +1,62 @@
+# FazDane Finance Platform — Strategy Selection Rules
+# Used by src/strategies/strategy_selector.py
+
+calendar:
+  description: "Use when directional bias exists but move is expected to be steady"
+  use_when:
+    fdts_signal:            ["buy", "sell"]
+    ticker_strength_min:    40
+    iv_rank_max:            60
+    trend_score_min:        40
+    expected_move_controlled: true
+  construction:
+    short_dte_min:          20
+    short_dte_max:          30
+    long_dte_min:           40
+    long_dte_max:           60
+    delta_target:           0.30      # 25–35 delta strike
+    call_calendar_for_bullish: true
+    put_calendar_for_bearish:  true
+
+diagonal:
+  description: "Use when stronger directional move expected, higher conviction"
+  use_when:
+    fdts_signal:            ["buy", "sell"]
+    fdts_score_min:         70
+    ticker_strength_min:    75
+    trend_score_min:        70
+  construction:
+    short_dte_min:          20
+    short_dte_max:          30
+    long_dte_min:           40
+    long_dte_max:           60
+    long_leg_delta_target:  0.50      # deeper ITM or near ATM
+    short_leg_delta_target: 0.25      # further OTM
+
+iron_condor:
+  description: "Use when sideways regime and high IV — collect premium"
+  use_when:
+    market_regime:          ["sideways", "low_volatility"]
+    iv_rank_min:            50
+    fdts_signal:            ["neutral"]
+    ticker_strength_max:    60
+    ticker_strength_min:    40
+  construction:
+    short_put_delta:        0.18      # 15–20 delta
+    short_call_delta:       0.18
+    wing_width_min:         5
+    wing_width_max:         10
+    dte_min:                30
+    dte_max:                45
+    min_credit_pct_of_width: 0.25    # target ≥25% of wing width
+
+no_trade:
+  description: "Skip when conditions are unfavorable"
+  triggers:
+    - liquidity_score_below:    40
+    - earnings_within_days:     14
+    - option_spread_pct_above:  0.15
+    - market_regime:            ["high_volatility", "risk_off"]
+    - iv_rank_below:            15
+    - gamma_risk_score_above:   80
+    - fdts_and_strength_conflict: true
