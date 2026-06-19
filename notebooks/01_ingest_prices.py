@@ -29,7 +29,7 @@
 # COMMAND ----------
 
 import sys
-sys.path.insert(0, "/Workspace/Repos/ffazdane/DB_Financial_Research_Platform")
+sys.path.insert(0, "/Workspace/Repos/ffazdane@gmail.com/DB_Financial_Research_Platform")
 
 from src.ingestion.universe_loader import classify_tickers
 
